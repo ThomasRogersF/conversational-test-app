@@ -362,45 +362,6 @@ export interface ApiError {
     };
 }
 
-// ============================================================================
-// Re-export Session Schemas for convenience
-// ============================================================================
-
-export type {
-    SessionState,
-    SessionPhase,
-    TranscriptMessage,
-    Mistake,
-    StartSessionRequest,
-    StartSessionResponse,
-    TurnRequest,
-    TurnResponse,
-    EndSessionRequest,
-    EndSessionResponse,
-    GetSessionResponse,
-    SessionSummary,
-    SessionStorage,
-    QuizSubmitRequest,
-    QuizSubmitResponse,
-} from './session';
-
-export {
-    SessionStateSchema,
-    SessionPhaseSchema,
-    TranscriptMessageSchema,
-    MistakeSchema,
-    StartSessionRequestSchema,
-    StartSessionResponseSchema,
-    TurnRequestSchema,
-    TurnResponseSchema,
-    EndSessionRequestSchema,
-    EndSessionResponseSchema,
-    GetSessionResponseSchema,
-    SessionSummarySchema,
-    QuizSubmitRequestSchema,
-    QuizSubmitResponseSchema,
-} from './session';
-
 export function successResponse<T>(data: T): ApiResponse<T> {
     return { ok: true, data };
 }
