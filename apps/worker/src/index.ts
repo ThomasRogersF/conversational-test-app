@@ -28,6 +28,42 @@ export interface Env {
 }
 
 // ============================================================================
+// CORS Configuration
+// ============================================================================
+
+const ALLOWED_ORIGIN = "https://conversational-test-app.pages.dev";
+
+/**
+ * Add CORS headers to a Response
+ */
+function withCors(response: Response): Response {
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+    newHeaders.set('Vary', 'Origin');
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders,
+    });
+}
+
+/**
+ * Create a preflight response for OPTIONS requests
+ */
+function handlePreflight(): Response {
+    return new Response(null, {
+        status: 204,
+        headers: {
+            'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Max-Age': '86400',
+            'Vary': 'Origin',
+        },
+    });
+}
+
+// ============================================================================
 // Content Initialization
 // ============================================================================
 
@@ -262,14 +298,21 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        // Handle OPTIONS preflight requests globally
+        if (request.method === 'OPTIONS') {
+            return handlePreflight();
+        }
+
         try {
-            return await routeRequest(request, env);
+            const response = await routeRequest(request, env);
+            return withCors(response);
         } catch (err) {
             console.error('Unhandled error:', err);
-            return new Response(
+            const errorRes = new Response(
                 JSON.stringify(errorResponse('Internal server error', err instanceof Error ? err.message : String(err))),
                 { status: 500, headers: { 'Content-Type': 'application/json' } }
             );
+            return withCors(errorRes);
         }
     },
 } satisfies ExportedHandler<Env>;
