@@ -158,20 +158,22 @@ export async function submitQuizAnswers(
  * @param sessionId - Optional session ID for tracking
  * @param audioBlob - The recorded audio blob
  * @param language - Optional language hint (e.g., 'es' for Spanish)
+ * @param fileExtension - File extension matching the blob mime type (default: 'webm')
  * @returns The transcribed text and optional timing metrics
  * @throws Error if transcription fails
  */
 export async function transcribeAudio(
     sessionId: string | undefined,
     audioBlob: Blob,
-    language?: string
+    language?: string,
+    fileExtension: string = 'webm'
 ): Promise<{ text: string; requestId?: string; timing?: Timing }> {
     // Get the full URL for the API
     const apiUrl = getApiUrl('/api/stt/transcribe');
-    
+
     // Create FormData for multipart upload
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'audio.webm');
+    formData.append('audio', audioBlob, `audio.${fileExtension}`);
     
     if (language) {
         formData.append('language', language);

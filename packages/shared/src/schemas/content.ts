@@ -30,6 +30,8 @@ export const PersonaSchema = z.object({
     role: z.string().min(1),
     /** Optional voice identifier for TTS integration */
     voiceId: z.string().optional(),
+    /** Optional Inworld TTS voice ID override (used by worker when calling TTS API) */
+    ttsVoiceId: z.string().optional(),
     /** System instructions that define the persona's behavior and speaking style */
     instructions: z.string().min(1),
 });
