@@ -25,6 +25,8 @@ export { SessionsDurableObject };
 export interface Env {
     /** Durable Object binding for sessions */
     SESSIONS_DO?: DurableObjectNamespace;
+    /** OpenAI API key for LLM teacher decisions */
+    OPENAI_API_KEY: string;
 }
 
 // ============================================================================
@@ -242,7 +244,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
     }
 
     if (pathname === '/api/session/turn' && method === 'POST') {
-        return getSessionRouter().handleTurn(request);
+        return getSessionRouter().handleTurn(request, env);
     }
 
     if (pathname === '/api/session/end' && method === 'POST') {

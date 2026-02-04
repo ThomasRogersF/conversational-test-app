@@ -111,7 +111,7 @@ export class SessionEngine {
      * Handles retry gating with exact-match normalization.
      * Returns timing metrics for observability.
      */
-    async processTurn(sessionId: string, userText: string): Promise<ProcessTurnResult> {
+    async processTurn(sessionId: string, userText: string, env: { OPENAI_API_KEY: string }): Promise<ProcessTurnResult> {
         // Load the session
         let session = await this.storage.load(sessionId);
         if (!session) {
@@ -210,6 +210,7 @@ export class SessionEngine {
             }));
 
             decision = await generateTeacherDecision({
+                env,
                 transcript: [...transcriptForApi, { role: 'user', text: userText }],
                 scenario: {
                     id: scenario.id,
@@ -263,6 +264,7 @@ export class SessionEngine {
                 if (narrationTools.includes(toolResult.toolName) && toolResult.resultData.success) {
                     try {
                         const narration = await generateToolNarration({
+                            env,
                             toolName: toolResult.toolName,
                             toolResult: toolResult.resultData,
                             scenario: {

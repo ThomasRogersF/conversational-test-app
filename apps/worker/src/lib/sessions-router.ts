@@ -86,7 +86,7 @@ export class SessionRouter {
     /**
      * Handle POST /api/session/turn
      */
-    async handleTurn(request: Request): Promise<Response> {
+    async handleTurn(request: Request, env: { OPENAI_API_KEY: string }): Promise<Response> {
         const requestId = generateRequestId();
         const startTime = performance.now();
 
@@ -108,7 +108,7 @@ export class SessionRouter {
             }
 
             // Process turn (returns session and timing metrics)
-            const turnResult: ProcessTurnResult = await this.engine.processTurn(body.sessionId, body.userText);
+            const turnResult: ProcessTurnResult = await this.engine.processTurn(body.sessionId, body.userText, env);
             const { session, llmMs, toolMs } = turnResult;
 
             // Build response data

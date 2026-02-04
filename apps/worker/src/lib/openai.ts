@@ -63,8 +63,9 @@ export function isExactMatch(text1: string, text2: string): boolean {
 
 /**
  * Generates a teacher decision using OpenAI GPT-4o-mini.
- * 
+ *
  * @param params - The parameters for generating a teacher decision
+ * @param params.env - Cloudflare Worker environment containing OPENAI_API_KEY
  * @param params.transcript - Array of {role: 'user' | 'tutor', text: string}
  * @param params.scenario - The scenario configuration
  * @param params.persona - The persona configuration
@@ -72,6 +73,7 @@ export function isExactMatch(text1: string, text2: string): boolean {
  * @throws If the OpenAI call fails or the response doesn't match the schema
  */
 export async function generateTeacherDecision(params: {
+    env: { OPENAI_API_KEY: string };
     transcript: Array<{ role: 'user' | 'tutor'; text: string }>;
     scenario: {
         id: string;
@@ -88,10 +90,10 @@ export async function generateTeacherDecision(params: {
         instructions: string;
     };
 }): Promise<TeacherDecision> {
-    // Get API key from environment (Cloudflare Workers uses globalThis)
-    const apiKey = (globalThis as unknown as { OPENAI_API_KEY?: string }).OPENAI_API_KEY;
+    // Get API key from Cloudflare Worker environment
+    const apiKey = params.env.OPENAI_API_KEY;
     if (!apiKey) {
-        throw new Error('OPENAI_API_KEY environment variable is not set');
+        throw new Error('OPENAI_API_KEY is not set in Worker env');
     }
 
     // Build transcript window (last N turns)
@@ -245,6 +247,7 @@ Your response must be a JSON object with this exact schema:
 // ============================================================================
 
 export interface ToolNarrationParams {
+    env: { OPENAI_API_KEY: string };
     toolName: string;
     toolResult: {
         success: boolean;
@@ -273,9 +276,9 @@ export interface ToolNarrationParams {
  * The calling code must ensure tool is null in this follow-up call.
  */
 export async function generateToolNarration(params: ToolNarrationParams): Promise<string> {
-    const apiKey = (globalThis as unknown as { OPENAI_API_KEY?: string }).OPENAI_API_KEY;
+    const apiKey = params.env.OPENAI_API_KEY;
     if (!apiKey) {
-        throw new Error('OPENAI_API_KEY environment variable is not set');
+        throw new Error('OPENAI_API_KEY is not set in Worker env');
     }
 
     const { toolName, toolResult, scenario, persona } = params;
