@@ -10,6 +10,50 @@ import {
     Toggle,
 } from '../components';
 
+// ============================================================================
+// MediaRecorder Support Detection
+// ============================================================================
+
+/** Ordered list of mime types to try for MediaRecorder */
+const MIME_CANDIDATES = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/mp4;codecs=mp4a.40.2',
+];
+
+/**
+ * Detect whether MediaRecorder is available and find the best supported mime type.
+ * Returns { supported: true, mimeType } or { supported: false }.
+ */
+function detectMediaRecorderSupport(): { supported: true; mimeType: string } | { supported: false } {
+    if (typeof MediaRecorder === 'undefined') {
+        return { supported: false };
+    }
+    for (const mime of MIME_CANDIDATES) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+            return { supported: true, mimeType: mime };
+        }
+    }
+    return { supported: false };
+}
+
+/**
+ * Map a recording mime type to a file extension for the STT upload.
+ */
+function mimeToExtension(mimeType: string): string {
+    if (mimeType.startsWith('audio/webm')) return 'webm';
+    if (mimeType.startsWith('audio/mp4')) return 'm4a';
+    return 'webm';
+}
+
+// Run detection once at module level
+const mediaSupport = detectMediaRecorderSupport();
+
+// ============================================================================
+// Audio Helpers
+// ============================================================================
+
 /**
  * Create a Blob URL from base64 audio data
  */
@@ -20,11 +64,14 @@ function createAudioUrl(base64Audio: string, mimeType: string): string {
     for (let i = 0; i < len; i++) {
         bytes[i] = binaryString.charCodeAt(i);
     }
-    // Use ArrayBuffer for proper type compatibility
     const arrayBuffer = bytes.buffer.slice(0, len);
     const blob = new Blob([arrayBuffer], { type: mimeType });
     return URL.createObjectURL(blob);
 }
+
+// ============================================================================
+// SessionScreen Component
+// ============================================================================
 
 export function SessionScreen() {
     const navigate = useNavigate();
@@ -37,7 +84,11 @@ export function SessionScreen() {
         activeQuiz?: { quizId: string; startedAt: string };
     } | null>(null);
     const [loading, setLoading] = React.useState(true);
-    const [error, setError] = React.useState<string | null>(null);
+    const [fatalError, setFatalError] = React.useState<string | null>(null);
+
+    // Non-blocking error banner (mic/STT/turn/TTS issues)
+    const [banner, setBanner] = React.useState<{ message: string; retry?: () => void } | null>(null);
+
     const [messageInput, setMessageInput] = React.useState('');
     const [ttsEnabled, setTtsEnabled] = React.useState(false);
     const [sending, setSending] = React.useState(false);
@@ -53,6 +104,7 @@ export function SessionScreen() {
     const [isRecording, setIsRecording] = React.useState(false);
     const [transcribing, setTranscribing] = React.useState(false);
     const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+    const streamRef = React.useRef<MediaStream | null>(null);
     const recordedChunksRef = React.useRef<Blob[]>([]);
 
     // Debug panel state (default OFF)
@@ -60,7 +112,15 @@ export function SessionScreen() {
     const [lastSttTiming, setLastSttTiming] = React.useState<{ timing?: Timing; requestId?: string } | null>(null);
     const [lastTurnTiming, setLastTurnTiming] = React.useState<{ timing?: Timing; requestId?: string } | null>(null);
 
-    // Cleanup audio URL on unmount
+    // Track whether mic is unsupported (shown once)
+    const [micUnsupportedShown, setMicUnsupportedShown] = React.useState(false);
+
+    // In-flight request guard to prevent overlapping requests
+    const inflightRef = React.useRef(false);
+
+    // ============================================================================
+    // Cleanup: audio URL on unmount
+    // ============================================================================
     React.useEffect(() => {
         return () => {
             if (audioUrl) {
@@ -73,11 +133,32 @@ export function SessionScreen() {
         };
     }, [audioUrl]);
 
-    // Load session on mount
+    // ============================================================================
+    // Cleanup: stop MediaRecorder and release mic on unmount/navigation
+    // ============================================================================
+    React.useEffect(() => {
+        return () => {
+            // Stop MediaRecorder if still active
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                try { mediaRecorderRef.current.stop(); } catch { /* already stopped */ }
+            }
+            mediaRecorderRef.current = null;
+
+            // Release all mic tracks
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach((track) => track.stop());
+                streamRef.current = null;
+            }
+        };
+    }, []);
+
+    // ============================================================================
+    // Load session on mount (session continuity on refresh)
+    // ============================================================================
     React.useEffect(() => {
         async function loadSession() {
             if (!sessionId) {
-                setError('No session ID provided');
+                setFatalError('No session ID provided');
                 setLoading(false);
                 return;
             }
@@ -86,7 +167,7 @@ export function SessionScreen() {
                 const data = await getSession(sessionId);
                 setSession(data.session);
             } catch (err) {
-                setError(parseApiError(err).message);
+                setFatalError(parseApiError(err).message);
             } finally {
                 setLoading(false);
             }
@@ -94,9 +175,9 @@ export function SessionScreen() {
         loadSession();
     }, [sessionId]);
 
-    /**
-     * Play audio from base64 data
-     */
+    // ============================================================================
+    // Audio Playback
+    // ============================================================================
     const playAudio = React.useCallback((base64Audio: string, mimeType: string) => {
         // Clean up previous audio
         if (audioUrl) {
@@ -120,7 +201,6 @@ export function SessionScreen() {
             audio.onpause = () => setIsPlaying(false);
             audio.onended = () => {
                 setIsPlaying(false);
-                // Clean up after playback
                 URL.revokeObjectURL(url);
                 setAudioUrl(null);
                 audioRef.current = null;
@@ -133,11 +213,10 @@ export function SessionScreen() {
                 audioRef.current = null;
             };
 
-            // Attempt autoplay (may fail due to browser policies)
+            // Attempt autoplay (may fail on Safari/autoplay policies)
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise.catch((err) => {
-                    // Autoplay was prevented - user must interact first
                     console.warn('Audio autoplay prevented:', err);
                     setAudioError('Click the play button to hear the tutor');
                 });
@@ -153,50 +232,56 @@ export function SessionScreen() {
     // ============================================================================
 
     /**
-     * Start recording audio from the microphone
+     * Start recording audio from the microphone.
+     * Uses the best supported mime type detected at module load.
      */
     const startRecording = async () => {
-        try {
-            // Request microphone permission
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!mediaSupport.supported) {
+            // Should not reach here because mic button is hidden, but guard anyway
+            return;
+        }
 
-            // Set up media recorder with webm format (widely supported)
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+
             const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm',
+                mimeType: mediaSupport.mimeType,
             });
 
-            // Clear previous recording
             recordedChunksRef.current = [];
 
-            // Collect audio chunks
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     recordedChunksRef.current.push(event.data);
                 }
             };
 
-            // When recording stops, process the audio
             mediaRecorder.onstop = async () => {
                 // Stop all tracks to release the microphone
                 stream.getTracks().forEach((track) => track.stop());
+                streamRef.current = null;
 
-                // Create the audio blob
-                const audioBlob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+                const audioBlob = new Blob(recordedChunksRef.current, {
+                    type: mediaSupport.mimeType,
+                });
 
-                // Transcribe the audio
                 await handleTranscribe(audioBlob);
             };
 
-            // Start recording
             mediaRecorderRef.current = mediaRecorder;
-            mediaRecorder.start(100); // Collect data every 100ms for better responsiveness
+            mediaRecorder.start(100);
             setIsRecording(true);
         } catch (err) {
             console.error('Failed to start recording:', err);
             if (err instanceof Error && err.name === 'NotAllowedError') {
-                setError('Microphone access denied. Please allow microphone access to use voice input.');
+                setBanner({
+                    message: "Microphone access denied. You can still type your message.",
+                });
             } else {
-                setError('Failed to access microphone. Please try again.');
+                setBanner({
+                    message: "Failed to access microphone. You can still type your message.",
+                });
             }
             setMicEnabled(false);
         }
@@ -214,28 +299,49 @@ export function SessionScreen() {
     };
 
     /**
-     * Transcribe recorded audio and send as a session turn
+     * Transcribe recorded audio, handle empty results, and send as a session turn
      */
     const handleTranscribe = async (audioBlob: Blob) => {
         if (!sessionId) return;
+        if (inflightRef.current) return; // prevent overlapping
 
         setTranscribing(true);
+        inflightRef.current = true;
 
         try {
-            // Transcribe the audio (now returns timing data)
-            const sttResult = await transcribeAudio(sessionId, audioBlob, 'es');
+            const ext = mimeToExtension(mediaSupport.supported ? mediaSupport.mimeType : 'audio/webm');
+            const sttResult = await transcribeAudio(sessionId, audioBlob, 'es', ext);
             setLastSttTiming({
                 timing: sttResult.timing,
                 requestId: sttResult.requestId,
             });
 
+            // Empty transcription handling
+            if (!sttResult.text || !sttResult.text.trim()) {
+                setTranscribing(false);
+                inflightRef.current = false;
+                setBanner({
+                    message: "Couldn't hear anything. Try again or type your message.",
+                    retry: () => {
+                        setBanner(null);
+                        setMicEnabled(true);
+                        startRecording();
+                    },
+                });
+                return;
+            }
+
             // Send the transcribed text as a user message (auto-send)
             await sendTranscribedMessage(sttResult.text);
         } catch (err) {
             console.error('Transcription failed:', err);
-            setError(`Transcription failed: ${parseApiError(err).message}. You can still type your message.`);
+            setBanner({
+                message: `Transcription failed: ${parseApiError(err).message}. You can still type your message.`,
+            });
             setTranscribing(false);
             setMicEnabled(false);
+        } finally {
+            inflightRef.current = false;
         }
     };
 
@@ -255,13 +361,15 @@ export function SessionScreen() {
                 requestId: data.requestId,
             });
 
-            // Handle TTS audio playback
+            // Handle TTS audio playback (non-blocking: failure is just a warning)
             if (ttsEnabled && data.tts?.audioBase64) {
                 playAudio(data.tts.audioBase64, data.tts.mimeType);
             }
         } catch (err) {
             console.error('Failed to send transcribed message:', err);
-            setError(`Failed to send message: ${parseApiError(err).message}`);
+            setBanner({
+                message: `Failed to send message: ${parseApiError(err).message}`,
+            });
         } finally {
             setSending(false);
             setTranscribing(false);
@@ -269,26 +377,41 @@ export function SessionScreen() {
     };
 
     /**
-     * Toggle microphone on/off
+     * Toggle microphone on/off.
+     * Initiated only by user click (required for Safari gesture policy).
      */
     const toggleMic = () => {
+        if (!mediaSupport.supported) {
+            if (!micUnsupportedShown) {
+                setBanner({
+                    message: "Voice input isn't available in this browser. You can still type your message.",
+                });
+                setMicUnsupportedShown(true);
+            }
+            return;
+        }
+
         if (micEnabled) {
-            // If currently enabled, stop recording if active
             if (isRecording) {
                 stopRecording();
             }
             setMicEnabled(false);
         } else {
-            // Enable mic and start recording
+            setBanner(null);
             setMicEnabled(true);
             startRecording();
         }
     };
 
+    // ============================================================================
+    // Typed Message Send
+    // ============================================================================
+
     const handleSendMessage = async () => {
-        if (!sessionId || !messageInput.trim() || sending) return;
+        if (!sessionId || !messageInput.trim() || sending || inflightRef.current) return;
 
         setSending(true);
+        inflightRef.current = true;
         const userText = messageInput.trim();
         setMessageInput('');
 
@@ -300,14 +423,16 @@ export function SessionScreen() {
                 requestId: data.requestId,
             });
 
-            // Handle TTS audio playback
             if (ttsEnabled && data.tts?.audioBase64) {
                 playAudio(data.tts.audioBase64, data.tts.mimeType);
             }
         } catch (err) {
-            setError(parseApiError(err).message);
+            setBanner({
+                message: `Failed to send message: ${parseApiError(err).message}`,
+            });
         } finally {
             setSending(false);
+            inflightRef.current = false;
         }
     };
 
@@ -328,12 +453,22 @@ export function SessionScreen() {
         }
     };
 
+    // ============================================================================
+    // Derived state: controls disabled during inflight operations
+    // ============================================================================
+    const micDisabled = transcribing || sending;
+    const sendDisabled = (!messageInput.trim() && !transcribing) || sending || inflightRef.current;
+
+    // ============================================================================
+    // Render
+    // ============================================================================
+
     if (loading) {
         return <LoadingSpinner message="Loading session..." />;
     }
 
-    if (error || !session) {
-        return <ErrorDisplay message={error || 'Session not found'} onRetry={() => navigate('/levels')} />;
+    if (fatalError || !session) {
+        return <ErrorDisplay message={fatalError || 'Session not found'} onRetry={() => navigate('/levels')} />;
     }
 
     return (
@@ -378,39 +513,41 @@ export function SessionScreen() {
                             </span>
                         </label>
 
-                        {/* Mic Input Toggle */}
-                        <button
-                            type="button"
-                            onClick={toggleMic}
-                            disabled={transcribing || sending}
-                            className={`
-                                flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
-                                transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
-                                ${micEnabled
-                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                }
-                                ${transcribing || sending ? 'opacity-50 cursor-not-allowed' : ''}
-                            `}
-                            title={micEnabled ? 'Click to stop recording' : 'Click to start voice input'}
-                        >
-                            {transcribing ? (
-                                <>
-                                    <span className="animate-pulse">⏳</span>
-                                    <span>Transcribing...</span>
-                                </>
-                            ) : isRecording ? (
-                                <>
-                                    <span className="animate-pulse">●</span>
-                                    <span>Recording...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span>🎤</span>
-                                    <span>Mic Input</span>
-                                </>
-                            )}
-                        </button>
+                        {/* Mic Input Toggle - hidden if MediaRecorder not supported */}
+                        {mediaSupport.supported && (
+                            <button
+                                type="button"
+                                onClick={toggleMic}
+                                disabled={micDisabled}
+                                className={`
+                                    flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
+                                    transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
+                                    ${micEnabled
+                                        ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }
+                                    ${micDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+                                `}
+                                title={micEnabled ? 'Click to stop recording' : 'Click to start voice input'}
+                            >
+                                {transcribing ? (
+                                    <>
+                                        <span className="animate-pulse">⏳</span>
+                                        <span>Transcribing...</span>
+                                    </>
+                                ) : isRecording ? (
+                                    <>
+                                        <span className="animate-pulse">●</span>
+                                        <span>Recording...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>🎤</span>
+                                        <span>Mic Input</span>
+                                    </>
+                                )}
+                            </button>
+                        )}
 
                         {/* Debug Toggle */}
                         <Toggle
@@ -421,6 +558,32 @@ export function SessionScreen() {
                     </div>
                 </div>
             </header>
+
+            {/* Non-blocking Error/Info Banner */}
+            {banner && (
+                <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
+                    <div className="max-w-4xl mx-auto flex items-center justify-between">
+                        <span className="text-sm text-amber-800">{banner.message}</span>
+                        <div className="flex items-center gap-2">
+                            {banner.retry && (
+                                <button
+                                    onClick={banner.retry}
+                                    className="text-sm font-medium text-amber-700 hover:text-amber-900 underline"
+                                >
+                                    Retry
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setBanner(null)}
+                                className="text-amber-600 hover:text-amber-800 text-lg leading-none"
+                                aria-label="Dismiss"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Transcript Area */}
             <main className="flex-1 max-w-4xl mx-auto w-full p-4 overflow-auto">
@@ -451,7 +614,6 @@ export function SessionScreen() {
                                             setAudioError('Click to play');
                                         });
                                     } else if (audioUrl) {
-                                        // Recreate audio if needed
                                         const audio = new Audio(audioUrl);
                                         audioRef.current = audio;
                                         audio.onplay = () => setIsPlaying(true);
@@ -472,7 +634,7 @@ export function SessionScreen() {
                                     }
                                 `}
                             >
-                                {isPlaying ? 'Pause' : audioError ? 'Play' : 'Play'}
+                                {isPlaying ? 'Pause' : 'Play'}
                             </button>
                         </div>
                     </div>
@@ -494,7 +656,7 @@ export function SessionScreen() {
                         />
                         <Button
                             onClick={handleSendMessage}
-                            disabled={(!messageInput.trim() && !transcribing) || sending}
+                            disabled={sendDisabled}
                             className="self-end"
                         >
                             {transcribing ? 'Transcribing...' : sending ? 'Sending...' : 'Send'}

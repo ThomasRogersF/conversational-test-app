@@ -14,6 +14,7 @@ import { SessionEngine, type ProcessTurnResult } from './session-engine';
 import { InMemorySessionStorage } from './sessions-durable-object';
 import { executeTool, applyToolResultToSession } from './tools';
 import { synthesizeSpeech } from './inworld-tts';
+import { getScenarioById, getPersonaById } from './content-loader';
 
 // ============================================================================
 // Request ID Generation
@@ -132,8 +133,19 @@ export class SessionRouter {
             if (body.ttsEnabled && session.lastDecision?.reply) {
                 const ttsStart = performance.now();
                 try {
+                    // Resolve persona-specific TTS voice if available
+                    let personaTtsVoiceId: string | undefined;
+                    const scenario = getScenarioById(session.scenarioId);
+                    if (scenario) {
+                        const persona = getPersonaById(scenario.personaId);
+                        if (persona?.ttsVoiceId) {
+                            personaTtsVoiceId = persona.ttsVoiceId;
+                        }
+                    }
+
                     const tts = await synthesizeSpeech({
                         text: session.lastDecision.reply,
+                        voiceId: personaTtsVoiceId,
                     });
                     if (tts) {
                         responseData.tts = tts;
