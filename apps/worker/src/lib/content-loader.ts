@@ -7,21 +7,21 @@ import {
     ApiError,
     errorResponse,
 } from '@repo/shared';
+import { z } from 'zod';
 import type { ZodError, ZodIssue } from 'zod';
 import type { ContentPack, Level, Persona, Scenario, Quiz } from '@repo/shared';
 
-// ============================================================================
-// Configuration
-// ============================================================================
+// Import JSON content files directly for bundling with Cloudflare Workers
+import levelsJson from '../../content/levels.json';
+import personasJson from '../../content/personas.json';
+import scenariosJson from '../../content/scenarios.json';
+import quizzesJson from '../../content/quizzes.json';
 
-const CONTENT_DIR = 'content';
-
-const CONTENT_FILES = {
-    levels: `${CONTENT_DIR}/levels.json`,
-    personas: `${CONTENT_DIR}/personas.json`,
-    scenarios: `${CONTENT_DIR}/scenarios.json`,
-    quizzes: `${CONTENT_DIR}/quizzes.json`,
-} as const;
+// Array schemas for validating JSON files (which contain arrays of items)
+const LevelsArraySchema = z.array(LevelSchema);
+const PersonasArraySchema = z.array(PersonaSchema);
+const ScenariosArraySchema = z.array(ScenarioSchema);
+const QuizzesArraySchema = z.array(QuizSchema);
 
 // ============================================================================
 // Error Formatting Utilities
@@ -76,51 +76,47 @@ export function createValidationError(
 // Content Loading
 // ============================================================================
 
-/**
- * Loads and parses a JSON file from the content directory.
- */
-async function loadJsonFile<T>(filename: string): Promise<T> {
-    // In Cloudflare Workers, we use the import.meta trick to read bundled files
-    // For local development, we use the paths defined above
-    const content = await import(`../${filename}`) as { default: T };
-    return content.default;
-}
+// Content file names for error reporting
+const CONTENT_FILE_NAMES = {
+    levels: 'content/levels.json',
+    personas: 'content/personas.json',
+    scenarios: 'content/scenarios.json',
+    quizzes: 'content/quizzes.json',
+} as const;
 
 /**
  * Loads all content files and validates them.
- * 
+ *
  * @returns Validated ContentPack object
  * @throws Error with detailed validation information if any content is invalid
  */
 export async function loadContent(): Promise<ContentPack> {
-    // Load all JSON files in parallel
-    const [levelsData, personasData, scenariosData, quizzesData] = await Promise.all([
-        loadJsonFile<unknown>(CONTENT_FILES.levels),
-        loadJsonFile<unknown>(CONTENT_FILES.personas),
-        loadJsonFile<unknown>(CONTENT_FILES.scenarios),
-        loadJsonFile<unknown>(CONTENT_FILES.quizzes),
-    ]);
+    // Use directly imported JSON files (bundled by Cloudflare Workers)
+    const levelsData = levelsJson as unknown;
+    const personasData = personasJson as unknown;
+    const scenariosData = scenariosJson as unknown;
+    const quizzesData = quizzesJson as unknown;
 
-    // Validate individual schemas first for better error messages
-    const levelResult = LevelSchema.safeParse(levelsData);
-    const personaResult = PersonaSchema.safeParse(personasData);
-    const scenarioResult = ScenarioSchema.safeParse(scenariosData);
-    const quizResult = QuizSchema.safeParse(quizzesData);
+    // Validate array schemas first for better error messages
+    const levelResult = LevelsArraySchema.safeParse(levelsData);
+    const personaResult = PersonasArraySchema.safeParse(personasData);
+    const scenarioResult = ScenariosArraySchema.safeParse(scenariosData);
+    const quizResult = QuizzesArraySchema.safeParse(quizzesData);
 
     // Collect all validation errors
     const validationErrors: Array<{ file: string; error: ZodError }> = [];
 
     if (!levelResult.success) {
-        validationErrors.push({ file: CONTENT_FILES.levels, error: levelResult.error });
+        validationErrors.push({ file: CONTENT_FILE_NAMES.levels, error: levelResult.error });
     }
     if (!personaResult.success) {
-        validationErrors.push({ file: CONTENT_FILES.personas, error: personaResult.error });
+        validationErrors.push({ file: CONTENT_FILE_NAMES.personas, error: personaResult.error });
     }
     if (!scenarioResult.success) {
-        validationErrors.push({ file: CONTENT_FILES.scenarios, error: scenarioResult.error });
+        validationErrors.push({ file: CONTENT_FILE_NAMES.scenarios, error: scenarioResult.error });
     }
     if (!quizResult.success) {
-        validationErrors.push({ file: CONTENT_FILES.quizzes, error: quizResult.error });
+        validationErrors.push({ file: CONTENT_FILE_NAMES.quizzes, error: quizResult.error });
     }
 
     // If there are individual schema errors, throw with details
