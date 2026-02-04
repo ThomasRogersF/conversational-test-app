@@ -18,6 +18,10 @@ import { SessionRouter } from './lib/sessions-router';
 import { handleSttTranscribe } from './lib/openai-stt';
 import type { Level, Scenario, Quiz } from '@repo/shared';
 
+import { SessionsDurableObject } from "./lib/sessions-durable-object";
+export { SessionsDurableObject };
+
+
 export interface Env {
     /** Durable Object binding for sessions */
     SESSIONS_DO?: DurableObjectNamespace;
