@@ -1,0 +1,52 @@
+[
+    {
+        "id": "taxi-quiz",
+        "scenarioId": "taxi-bogota",
+        "items": [
+            {
+                "question": "How do you ask 'How much does it cost to go to...' in Spanish?",
+                "options": [
+                    "¿Cuánto cuesta ir a...?",
+                    "¿Cuánto es ir a...?",
+                    "¿Cuánto precio para...?",
+                    "¿Cuántos cuesta...?"
+                ],
+                "correctIndex": 0,
+                "explanation": "Correct! '¿Cuánto cuesta ir a...?' is the proper way to ask about the cost of going to a place."
+            },
+            {
+                "question": "Which word do you use for 'expensive' when talking about a taxi fare?",
+                "options": [
+                    "caro",
+                    "barato",
+                    "grande",
+                    "pequeño"
+                ],
+                "correctIndex": 0,
+                "explanation": "¡Caro! means expensive. 'Barato' means cheap."
+            },
+            {
+                "question": "Which of these is the correct way to say the address 'Calle Principal, número 25'?",
+                "options": [
+                    "Calle Principal, número 25",
+                    "Calle Principal, quantos 25",
+                    "Calle Principal, quanto 25",
+                    "Calle Principal, numerito 25"
+                ],
+                "correctIndex": 0,
+                "explanation": "¡Muy bien! 'Número' or simply 'número' (abbreviated 'núm.') is used for street addresses."
+            },
+            {
+                "question": "What does 'parar' mean in the context of a taxi?",
+                "options": [
+                    "To stop",
+                    "To park",
+                    "To speed up",
+                    "To honk"
+                ],
+                "correctIndex": 0,
+                "explanation": "¡Correcto! 'Parar' means 'to stop'. You might hear '¿Puedo parar aquí?' (Can I stop here?)."
+            }
+        ]
+    }
+]

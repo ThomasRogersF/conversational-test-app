@@ -1,0 +1,20 @@
+[
+    {
+        "id": "A1",
+        "name": "A1 - Beginner",
+        "description": "Basic introductions, greetings, and everyday phrases. Learn to introduce yourself and interact in simple conversations.",
+        "order": 1
+    },
+    {
+        "id": "A2",
+        "name": "A2 - Elementary",
+        "description": "Common situations, routines, and basic personal information. Build confidence in everyday interactions.",
+        "order": 2
+    },
+    {
+        "id": "B1",
+        "name": "B1 - Intermediate",
+        "description": "Expressing opinions, experiences, and future plans. Handle most travel situations and describe topics of interest.",
+        "order": 3
+    }
+]

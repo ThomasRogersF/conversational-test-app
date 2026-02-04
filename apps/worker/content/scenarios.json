@@ -1,0 +1,51 @@
+[
+    {
+        "id": "taxi-bogota",
+        "levelId": "A1",
+        "title": "Taxi Ride in Bogotá",
+        "description": "Practice ordering a taxi and giving your destination in Bogotá. Learn to understand a driver's response and provide your address.",
+        "personaId": "jorge",
+        "tags": ["travel", "directions", "numbers"],
+        "learningGoals": [
+            "Order a taxi with '¿Cuánto cuesta ir a...?'",
+            "Give a street address",
+            "Understand driver confirmation"
+        ],
+        "initialMessage": "¡Hola! ¿Adónde vas? Soy Jorge, ¿te llevo a algún lado?",
+        "successConditions": [
+            "Learner asks about the fare using a complete sentence",
+            "Learner provides a valid street address",
+            "Learner responds to driver's greeting"
+        ],
+        "conversationRules": [
+            "Driver waits for learner to initiate the ride request",
+            "Driver confirms address after learner provides it",
+            "Driver mentions the fare when asked"
+        ],
+        "postQuizId": "taxi-quiz"
+    },
+    {
+        "id": "ser-estar-confusion",
+        "levelId": "A1",
+        "title": "Ser vs Estar Confusion",
+        "description": "Practice using ser and estar correctly in everyday contexts. Get gentle corrections when you mix them up.",
+        "personaId": "valentina",
+        "tags": ["grammar", "ser", "estar"],
+        "learningGoals": [
+            "Use 'ser' for permanent characteristics",
+            "Use 'estar' for temporary states",
+            "Recognize common mistakes with ser/estar"
+        ],
+        "initialMessage": "¡Hola! Hoy vamos a practicar 'ser' y 'estar'. Son fáciles, ¡no te preocupes! ¿Qué quieres saber primero?",
+        "successConditions": [
+            "Learner correctly uses ser for describing people (nationality, profession)",
+            "Learner correctly uses estar for location and temporary states",
+            "Learner attempts to correct themselves after feedback"
+        ],
+        "conversationRules": [
+            "Tutor provides immediate, short corrections",
+            "Tutor explains the rule briefly after each mistake",
+            "Tutor moves to the next topic after learner demonstrates understanding"
+        ]
+    }
+]

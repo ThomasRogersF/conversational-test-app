@@ -1,0 +1,16 @@
+name = "conversational-app-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[vars]
+# Placeholder for environment variables
+
+# Durable Objects configuration
+[[durable_objects.bindings]]
+name = "SESSIONS_DO"
+class_name = "SessionsDurableObject"
+
+# Migration for new Durable Object
+[[migrations]]
+tag = "v1"
+new_classes = ["SessionsDurableObject"]
