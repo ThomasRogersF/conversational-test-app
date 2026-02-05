@@ -19,7 +19,7 @@ export interface InworldTtsEnv {
 // ============================================================================
 
 const TTS_MAX_TEXT_LENGTH = 1000;
-const TTS_TIMEOUT_MS = 5000; // Increased timeout slightly
+const TTS_TIMEOUT_MS = 5000;
 const INWORLD_TTS_URL = 'https://api.inworld.ai/tts/v1/voice';
 const INWORLD_TTS_MODEL = 'inworld-tts-1.5-max';
 
@@ -46,10 +46,8 @@ export async function synthesizeSpeech({
     // 1. AUTO-FIX AUTH: Base64 encode if the user provided "key:secret" in plaintext
     if (!apiKey.startsWith('Basic ')) {
         if (apiKey.includes(':') && !apiKey.match(/^[a-zA-Z0-9+/=]+$/)) {
-            // It looks like raw "key:secret", so we encode it
             apiKey = `Basic ${btoa(apiKey)}`;
         } else {
-            // It might be already encoded or just a token, prepend Basic just in case
             apiKey = `Basic ${apiKey}`;
         }
     }
@@ -61,34 +59,30 @@ export async function synthesizeSpeech({
 
     if (!text.trim()) return null;
 
-    // 2. FIX VOICE: Only use voice if it's a valid string (not "default" or empty)
+    // 2. ROBUST VOICE SELECTION (The Fix)
+    // Priority: Explicit Argument > Environment Variable > Hardcoded Safe Default
     let voice = voiceId || env.INWORLD_TTS_VOICE?.trim();
-    if (voice === 'default') voice = undefined; // Let API decide default
+    
+    // If we still don't have a voice (or it's set to 'default'), force a real ID
+    if (!voice || voice === 'default') {
+        voice = 'masculine_us_1'; 
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TTS_TIMEOUT_MS);
 
     try {
-        const bodyPayload: any = {
-            text,
-            modelId: INWORLD_TTS_MODEL,
-        };
-        // Only attach voice if we actually have one
-        if (voice) {
-            bodyPayload.voice = voice;
-        } else {
-            // Fallback to a known safe male voice if none provided
-            // This prevents "Diego" errors if you forgot to delete the secret
-            bodyPayload.gender = "MASCULINE"; 
-        }
-
         const response = await fetch(INWORLD_TTS_URL, {
             method: 'POST',
             headers: {
-                'Authorization': apiKey, // Uses the fixed key
+                'Authorization': apiKey,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(bodyPayload),
+            body: JSON.stringify({
+                text,
+                modelId: INWORLD_TTS_MODEL,
+                voice: voice, // We now guarantee this is never empty
+            }),
             signal: controller.signal,
         });
 
