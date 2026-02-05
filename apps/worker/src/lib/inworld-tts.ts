@@ -68,17 +68,15 @@ export async function synthesizeSpeech({
             return null;
         }
 
-        const audioArrayBuffer = await response.arrayBuffer();
-        
-        let audioBase64 = '';
-        const bytes = new Uint8Array(audioArrayBuffer);
-        for (let i = 0; i < bytes.byteLength; i++) {
-            audioBase64 += String.fromCharCode(bytes[i]);
+        const json = await response.json() as { audioContent?: string };
+
+        if (!json.audioContent) {
+            console.error('[InworldTTS] Response missing audioContent field:', JSON.stringify(json).slice(0, 200));
+            return null;
         }
-        audioBase64 = btoa(audioBase64);
 
         return {
-            audioBase64,
+            audioBase64: json.audioContent,
             mimeType: 'audio/mp3',
         };
     } catch (error: any) {
