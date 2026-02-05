@@ -16,6 +16,7 @@ import {
 } from './lib/content-loader';
 import { SessionRouter } from './lib/sessions-router';
 import { handleSttTranscribe } from './lib/openai-stt';
+import { synthesizeSpeech } from './lib/inworld-tts';
 import type { Level, Scenario, Quiz } from '@repo/shared';
 
 import { SessionsDurableObject } from "./lib/sessions-durable-object";
@@ -229,6 +230,72 @@ async function handleGetContentQuiz(request: Request): Promise<Response> {
 }
 
 // ============================================================================
+// Debug Handlers
+// ============================================================================
+
+/**
+ * GET /api/debug/tts - Directly test the TTS API in isolation
+ */
+async function handleDebugTts(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    const text = url.searchParams.get('text') || 'Hello world';
+    const voiceOverride = url.searchParams.get('voice') || undefined;
+
+    const voiceUsed = voiceOverride || env.INWORLD_TTS_VOICE?.trim() || 'masculine_us_1';
+
+    const start = performance.now();
+
+    try {
+        const result = await synthesizeSpeech({
+            text,
+            voiceId: voiceOverride,
+            env,
+        });
+        const timing = performance.now() - start;
+
+        if (result) {
+            return new Response(
+                JSON.stringify({
+                    ok: true,
+                    message: 'TTS Generation Successful',
+                    timing_ms: Math.round(timing * 100) / 100,
+                    voice_used: voiceUsed,
+                    audio_size: result.audioBase64.length,
+                }),
+                { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
+        }
+
+        return new Response(
+            JSON.stringify({
+                ok: false,
+                message: 'TTS Generation Failed',
+                debug_info: {
+                    has_inworld_api_key: !!env.INWORLD_API_KEY,
+                    has_inworld_tts_voice: !!env.INWORLD_TTS_VOICE,
+                },
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+    } catch (err) {
+        const timing = performance.now() - start;
+        return new Response(
+            JSON.stringify({
+                ok: false,
+                message: 'TTS Generation Failed',
+                error: err instanceof Error ? err.message : String(err),
+                timing_ms: Math.round(timing * 100) / 100,
+                debug_info: {
+                    has_inworld_api_key: !!env.INWORLD_API_KEY,
+                    has_inworld_tts_voice: !!env.INWORLD_TTS_VOICE,
+                },
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+    }
+}
+
+// ============================================================================
 // Request Router
 // ============================================================================
 
@@ -294,6 +361,11 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
     // POST /api/stt/transcribe - Speech-to-text transcription
     if (pathname === '/api/stt/transcribe' && method === 'POST') {
         return handleSttTranscribe(request, env);
+    }
+
+    // GET /api/debug/tts - Direct TTS API test
+    if (pathname === '/api/debug/tts') {
+        return handleDebugTts(request, env);
     }
 
     // 404 for unknown routes
