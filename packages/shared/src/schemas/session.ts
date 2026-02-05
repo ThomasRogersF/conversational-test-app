@@ -145,17 +145,17 @@ export const TurnRequestSchema = z.object({
 
 export type TurnRequest = z.infer<typeof TurnRequestSchema>;
 
-export const TurnResponseSchema = z.object({
+export const TurnResponseDataSchema = z.object({
     session: SessionStateSchema,
     /** Optional TTS audio payload (present if TTS succeeded and was enabled) */
     tts: TtsPayloadSchema.optional(),
-    /** Unique request ID for tracing (UUID v4) */
-    requestId: z.string().uuid().optional(),
-    /** Timing metrics for the request */
-    timing: TimingSchema.optional(),
 });
 
-export type TurnResponse = z.infer<typeof TurnResponseSchema>;
+export type TurnResponseData = z.infer<typeof TurnResponseDataSchema>;
+
+/** @deprecated Use TurnResponseDataSchema — timing and requestId are now on the ApiResponse envelope */
+export const TurnResponseSchema = TurnResponseDataSchema;
+export type TurnResponse = TurnResponseData;
 
 // POST /api/session/end
 export const EndSessionRequestSchema = z.object({

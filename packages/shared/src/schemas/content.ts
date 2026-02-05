@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Timing } from './timing';
 
 // ============================================================================
 // Level Schema
@@ -352,6 +353,8 @@ export type TeacherDecision = z.infer<typeof TeacherDecisionSchema>;
 export interface ApiResponse<T> {
     ok: true;
     data: T;
+    timing?: Timing;
+    requestId?: string;
 }
 
 export interface ApiError {
@@ -362,8 +365,13 @@ export interface ApiError {
     };
 }
 
-export function successResponse<T>(data: T): ApiResponse<T> {
-    return { ok: true, data };
+export function successResponse<T>(data: T, timing?: Timing, requestId?: string): ApiResponse<T> {
+    return {
+        ok: true,
+        data,
+        ...(timing && { timing }),
+        ...(requestId && { requestId }),
+    };
 }
 
 export function errorResponse(message: string, details?: string): ApiError {
