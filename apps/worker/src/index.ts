@@ -255,6 +255,11 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
         return getSessionRouter().handleEndSession(request);
     }
 
+    // POST /api/session/quiz/submit - Server-authoritative quiz grading
+    if (pathname === '/api/session/quiz/submit' && method === 'POST') {
+        return getSessionRouter().handleQuizSubmit(request);
+    }
+
     // GET /api/session/:id
     if (pathname.startsWith('/api/session/') && method === 'GET') {
         return getSessionRouter().handleGetSession(request);
