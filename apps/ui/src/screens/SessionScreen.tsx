@@ -109,6 +109,12 @@ export function SessionScreen() {
         return () => {
             if (audioUrl) URL.revokeObjectURL(audioUrl);
             if (audioRef.current) {
+                // Detach handlers before pausing so the pause() doesn't
+                // trigger state updates on an unmounting component.
+                audioRef.current.onplay = null;
+                audioRef.current.onpause = null;
+                audioRef.current.onended = null;
+                audioRef.current.onerror = null;
                 audioRef.current.pause();
                 audioRef.current = null;
             }
@@ -152,14 +158,23 @@ export function SessionScreen() {
     // ============================================================================
     const playAudio = React.useCallback((base64Audio: string, mimeType: string) => {
         console.log(`[Audio] Attempting to play ${mimeType}, length: ${base64Audio.length}`);
-        
+
         if (audioUrl) {
             URL.revokeObjectURL(audioUrl);
             setAudioUrl(null);
         }
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current = null;
+
+        // Stop previous audio before creating a new element. Detach the ref
+        // first so that the cleanup effect doesn't also try to pause it while
+        // the new play() promise is still settling.
+        const prev = audioRef.current;
+        audioRef.current = null;
+        if (prev) {
+            prev.onplay = null;
+            prev.onpause = null;
+            prev.onended = null;
+            prev.onerror = null;
+            prev.pause();
         }
 
         try {
@@ -189,7 +204,12 @@ export function SessionScreen() {
 
             const playPromise = audio.play();
             if (playPromise !== undefined) {
-                playPromise.catch((err) => {
+                playPromise.catch((err: DOMException) => {
+                    if (err.name === 'AbortError') {
+                        // The play() was interrupted by a newer pause/play cycle
+                        // (e.g. user navigated away or new audio arrived). Safe to ignore.
+                        return;
+                    }
                     console.warn('Audio autoplay prevented:', err);
                     setAudioError('Click the play button to hear the tutor');
                 });
@@ -414,7 +434,7 @@ export function SessionScreen() {
                          <div className="flex items-center gap-3"><span className="text-indigo-600">🔊</span><span className="text-sm text-indigo-800 font-medium">Tutor Voice</span></div>
                          <div className="flex items-center gap-3">
                              {audioError && <span className="text-xs text-red-600">{audioError}</span>}
-                             <button onClick={() => { if(audioRef.current) isPlaying ? audioRef.current.pause() : audioRef.current.play() }} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium">
+                             <button onClick={() => { if(audioRef.current) { if (isPlaying) { audioRef.current.pause(); } else { audioRef.current.play().catch((err: DOMException) => { if (err.name !== 'AbortError') { console.warn('Audio play prevented:', err); } }); } } }} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium">
                                 {isPlaying ? 'Pause' : 'Play'}
                              </button>
                          </div>
