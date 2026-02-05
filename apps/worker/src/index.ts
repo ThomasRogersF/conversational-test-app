@@ -244,7 +244,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
 
     // Session Routes
     if (pathname === '/api/session/start' && method === 'POST') {
-        return getSessionRouter().handleStartSession(request);
+        return getSessionRouter().startSession(request);
     }
 
     if (pathname === '/api/session/turn' && method === 'POST') {
@@ -252,17 +252,17 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
     }
 
     if (pathname === '/api/session/end' && method === 'POST') {
-        return getSessionRouter().handleEndSession(request);
+        return getSessionRouter().endSession(request);
     }
 
     // POST /api/session/quiz/submit - Server-authoritative quiz grading
     if (pathname === '/api/session/quiz/submit' && method === 'POST') {
-        return getSessionRouter().handleQuizSubmit(request);
+        return getSessionRouter().submitQuiz(request);
     }
 
     // GET /api/session/:id
     if (pathname.startsWith('/api/session/') && method === 'GET') {
-        return getSessionRouter().handleGetSession(request);
+        return getSessionRouter().getSession(request);
     }
 
     // Content API Routes

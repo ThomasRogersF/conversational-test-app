@@ -6,7 +6,6 @@ import {
     type SessionSummary,
     type StartSessionRequest,
     type TurnRequest,
-    type TurnResponse,
     type EndSessionRequest,
     type QuizSubmitRequest,
     type TtsPayload,
@@ -48,7 +47,7 @@ export class SessionRouter {
     /**
      * Handle POST /api/session/start
      */
-    async handleStartSession(request: Request): Promise<Response> {
+    async startSession(request: Request): Promise<Response> {
         try {
             const body = await request.json() as StartSessionRequest;
 
@@ -112,20 +111,12 @@ export class SessionRouter {
             const turnResult: ProcessTurnResult = await this.engine.processTurn(body.sessionId, body.userText, env);
             const { session, llmMs, toolMs } = turnResult;
 
-            // Build response data
+            // Build response data (session + tts only; timing/requestId go on the envelope)
             const responseData: {
                 session: SessionState;
                 tts?: TtsPayload;
-                requestId: string;
-                timing?: {
-                    llmMs: number;
-                    toolMs: number;
-                    ttsMs?: number;
-                    totalMs: number;
-                };
             } = {
                 session,
-                requestId,
             };
 
             let ttsMs: number | undefined;
@@ -163,7 +154,7 @@ export class SessionRouter {
 
             const totalMs = Math.round(performance.now() - startTime);
 
-            responseData.timing = {
+            const timing = {
                 llmMs,
                 toolMs,
                 ttsMs,
@@ -173,7 +164,7 @@ export class SessionRouter {
             console.log(`[SessionRouter] Turn processed requestId=${requestId} llmMs=${llmMs} toolMs=${toolMs} ttsMs=${ttsMs ?? 'n/a'} totalMs=${totalMs}`);
 
             return new Response(
-                JSON.stringify(successResponse(responseData)),
+                JSON.stringify(successResponse(responseData, timing, requestId)),
                 {
                     headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
                 }
@@ -207,7 +198,7 @@ export class SessionRouter {
     /**
      * Handle POST /api/session/end
      */
-    async handleEndSession(request: Request): Promise<Response> {
+    async endSession(request: Request): Promise<Response> {
         try {
             const body = await request.json() as EndSessionRequest;
 
@@ -250,7 +241,7 @@ export class SessionRouter {
     /**
      * Handle GET /api/session/:id
      */
-    async handleGetSession(request: Request): Promise<Response> {
+    async getSession(request: Request): Promise<Response> {
         try {
             const url = new URL(request.url);
             const sessionId = url.pathname.split('/').pop();
@@ -291,7 +282,7 @@ export class SessionRouter {
      * Handle POST /api/session/quiz/submit
      * Server-authoritative quiz grading
      */
-    async handleQuizSubmit(request: Request): Promise<Response> {
+    async submitQuiz(request: Request): Promise<Response> {
         try {
             const body = await request.json();
 
