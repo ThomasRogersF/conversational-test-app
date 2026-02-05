@@ -1,6 +1,7 @@
 import {
     successResponse,
     errorResponse,
+    QuizSubmitRequestSchema,
     type SessionState,
     type SessionSummary,
     type StartSessionRequest,
@@ -386,6 +387,3 @@ export class SessionRouter {
         }
     }
 }
-
-// Import the schema at module level for safeParse
-import { QuizSubmitRequestSchema } from '@repo/shared';
