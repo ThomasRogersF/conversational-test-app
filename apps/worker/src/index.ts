@@ -27,6 +27,10 @@ export interface Env {
     SESSIONS_DO?: DurableObjectNamespace;
     /** OpenAI API key for LLM teacher decisions */
     OPENAI_API_KEY: string;
+    /** Inworld API key for TTS synthesis (Basic auth) */
+    INWORLD_API_KEY: string;
+    /** Optional Inworld TTS voice override */
+    INWORLD_TTS_VOICE?: string;
 }
 
 // ============================================================================

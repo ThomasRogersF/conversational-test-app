@@ -86,7 +86,7 @@ export class SessionRouter {
     /**
      * Handle POST /api/session/turn
      */
-    async handleTurn(request: Request, env: { OPENAI_API_KEY: string }): Promise<Response> {
+    async handleTurn(request: Request, env: { OPENAI_API_KEY: string; INWORLD_API_KEY: string; INWORLD_TTS_VOICE?: string }): Promise<Response> {
         const requestId = generateRequestId();
         const startTime = performance.now();
 
@@ -146,6 +146,7 @@ export class SessionRouter {
                     const tts = await synthesizeSpeech({
                         text: session.lastDecision.reply,
                         voiceId: personaTtsVoiceId,
+                        env,
                     });
                     if (tts) {
                         responseData.tts = tts;
