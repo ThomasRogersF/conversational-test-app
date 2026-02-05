@@ -288,7 +288,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
 
     // POST /api/stt/transcribe - Speech-to-text transcription
     if (pathname === '/api/stt/transcribe' && method === 'POST') {
-        return handleSttTranscribe(request);
+        return handleSttTranscribe(request, env);
     }
 
     // 404 for unknown routes

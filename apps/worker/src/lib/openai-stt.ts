@@ -36,6 +36,12 @@ function generateRequestId(): string {
 // Types
 // ============================================================================
 
+/** Minimal env interface for STT - compatible with the worker's Env type */
+export interface SttEnv {
+    OPENAI_API_KEY: string;
+    OPENAI_STT_MODEL?: string;
+}
+
 export interface TranscribeAudioParams {
     /** Audio data as ArrayBuffer */
     audioBytes: ArrayBuffer;
@@ -91,7 +97,7 @@ function getSupportedTypesMessage(): string {
  * @returns Transcription result with the transcribed text
  * @throws If API key is missing, audio is invalid, or transcription fails
  */
-export async function transcribeAudio(params: TranscribeAudioParams): Promise<TranscribeAudioResult> {
+export async function transcribeAudio(params: TranscribeAudioParams, env: SttEnv): Promise<TranscribeAudioResult> {
     const { audioBytes, mimeType, filename, language } = params;
 
     // Validate audio type
@@ -99,14 +105,14 @@ export async function transcribeAudio(params: TranscribeAudioParams): Promise<Tr
         throw new Error(`Unsupported audio format: ${mimeType}. ${getSupportedTypesMessage()}`);
     }
 
-    // Get API key from environment
-    const apiKey = (globalThis as unknown as { OPENAI_API_KEY?: string }).OPENAI_API_KEY;
+    // Get API key from worker env bindings
+    const apiKey = env.OPENAI_API_KEY;
     if (!apiKey) {
         throw new Error('OPENAI_API_KEY environment variable is not set');
     }
 
-    // Get model from environment, default to gpt-4o-mini-transcribe
-    const model = (globalThis as unknown as { OPENAI_STT_MODEL?: string }).OPENAI_STT_MODEL || DEFAULT_STT_MODEL;
+    // Get model from env bindings, default to gpt-4o-mini-transcribe
+    const model = env.OPENAI_STT_MODEL || DEFAULT_STT_MODEL;
 
     // Create FormData for multipart request
     const formData = new FormData();
@@ -189,7 +195,7 @@ export const MAX_AUDIO_SIZE = MAX_AUDIO_SIZE_BYTES;
  * Note: In Cloudflare Workers, we need to handle multipart parsing manually
  * since the Request.formData() method is available.
  */
-export async function handleSttTranscribe(request: Request): Promise<Response> {
+export async function handleSttTranscribe(request: Request, env: SttEnv): Promise<Response> {
     const requestId = generateRequestId();
     const startTime = performance.now();
 
@@ -266,7 +272,7 @@ export async function handleSttTranscribe(request: Request): Promise<Response> {
             mimeType,
             filename,
             language,
-        });
+        }, env);
         const sttEnd = performance.now();
 
         const sttMs = Math.round(sttEnd - sttStart);
