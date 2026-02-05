@@ -90,6 +90,7 @@ export function SessionScreen() {
     const [isPlaying, setIsPlaying] = React.useState(false);
     const [audioError, setAudioError] = React.useState<string | null>(null);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
+    const audioUrlRef = React.useRef<string | null>(null);
 
     const [micEnabled, setMicEnabled] = React.useState(false);
     const [isRecording, setIsRecording] = React.useState(false);
@@ -105,9 +106,16 @@ export function SessionScreen() {
     const inflightRef = React.useRef(false);
 
     // ... (Cleanup effects remain the same) ...
+    // Cleanup only on unmount — NOT on every audioUrl change.
+    // Using audioUrlRef (not the audioUrl state) avoids the stale-closure
+    // problem and ensures we never accidentally pause a newly-started audio
+    // element just because a re-render ran the previous effect's cleanup.
     React.useEffect(() => {
         return () => {
-            if (audioUrl) URL.revokeObjectURL(audioUrl);
+            if (audioUrlRef.current) {
+                URL.revokeObjectURL(audioUrlRef.current);
+                audioUrlRef.current = null;
+            }
             if (audioRef.current) {
                 // Detach handlers before pausing so the pause() doesn't
                 // trigger state updates on an unmounting component.
@@ -119,7 +127,7 @@ export function SessionScreen() {
                 audioRef.current = null;
             }
         };
-    }, [audioUrl]);
+    }, []);
 
     React.useEffect(() => {
         return () => {
@@ -159,10 +167,13 @@ export function SessionScreen() {
     const playAudio = React.useCallback((base64Audio: string, mimeType: string) => {
         console.log(`[Audio] Attempting to play ${mimeType}, length: ${base64Audio.length}`);
 
-        if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
-            setAudioUrl(null);
+        // Revoke the previous Blob URL via ref (not state) to avoid
+        // stale-closure issues and unnecessary re-render dependencies.
+        if (audioUrlRef.current) {
+            URL.revokeObjectURL(audioUrlRef.current);
+            audioUrlRef.current = null;
         }
+        setAudioUrl(null);
 
         // Stop previous audio before creating a new element. Detach the ref
         // first so that the cleanup effect doesn't also try to pause it while
@@ -179,6 +190,7 @@ export function SessionScreen() {
 
         try {
             const url = createAudioUrl(base64Audio, mimeType);
+            audioUrlRef.current = url;
             setAudioUrl(url);
             setAudioError(null);
 
@@ -189,7 +201,12 @@ export function SessionScreen() {
             audio.onpause = () => setIsPlaying(false);
             audio.onended = () => {
                 setIsPlaying(false);
-                URL.revokeObjectURL(url);
+                // Only revoke if this URL is still the active one (a newer
+                // playAudio call may have already replaced it).
+                if (audioUrlRef.current === url) {
+                    URL.revokeObjectURL(url);
+                    audioUrlRef.current = null;
+                }
                 setAudioUrl(null);
                 audioRef.current = null;
             };
@@ -197,7 +214,10 @@ export function SessionScreen() {
                 console.error("[Audio] Playback Error:", e);
                 setIsPlaying(false);
                 setAudioError('Failed to play audio');
-                URL.revokeObjectURL(url);
+                if (audioUrlRef.current === url) {
+                    URL.revokeObjectURL(url);
+                    audioUrlRef.current = null;
+                }
                 setAudioUrl(null);
                 audioRef.current = null;
             };
@@ -218,7 +238,7 @@ export function SessionScreen() {
             console.error('Failed to create audio:', err);
             setAudioError('Failed to play audio');
         }
-    }, [audioUrl]);
+    }, []);
 
     // ... (Recording handlers remain same until sendTranscribedMessage) ...
 
