@@ -40,12 +40,11 @@ export async function synthesizeSpeech({
         }
     }
 
-    // 2. Voice Fix: NEVER send empty voice
-    // Priority: 1. Function Arg -> 2. Env Var -> 3. Hardcoded Fallback
+    // 2. Voice Selection
     let voice = voiceId || env.INWORLD_TTS_VOICE?.trim();
 
     if (!voice || voice === 'default' || voice === '') {
-        voice = 'masculine_us_1'; // <--- THIS PREVENTS YOUR ERROR
+        voice = 'masculine_us_1';
     }
 
     try {
@@ -58,7 +57,8 @@ export async function synthesizeSpeech({
             body: JSON.stringify({
                 text,
                 modelId: INWORLD_TTS_MODEL,
-                voice: voice, // Now guaranteed to have a string value
+                // FIX: The API expects 'voiceId', NOT 'voice'
+                voiceId: voice, 
             }),
         });
 
@@ -70,10 +70,8 @@ export async function synthesizeSpeech({
 
         const audioArrayBuffer = await response.arrayBuffer();
         
-        // Base64 conversion
         let audioBase64 = '';
         const bytes = new Uint8Array(audioArrayBuffer);
-        // Use a chunk-safe method for large buffers if needed, but simple loop is fine for short TTS
         for (let i = 0; i < bytes.byteLength; i++) {
             audioBase64 += String.fromCharCode(bytes[i]);
         }
@@ -89,7 +87,6 @@ export async function synthesizeSpeech({
     }
 }
 
-// Helper to check config (used by debug route)
 export function isTtsConfigured(env: InworldTtsEnv): boolean {
     return !!env.INWORLD_API_KEY;
 }
