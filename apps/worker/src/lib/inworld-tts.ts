@@ -1,37 +1,17 @@
 // Inworld TTS Client
-// Uses environment variables: INWORLD_API_KEY, INWORLD_TTS_VOICE
+// Uses env bindings: INWORLD_API_KEY, INWORLD_TTS_VOICE
+
+import { type TtsPayload } from '@repo/shared';
+
+export type { TtsPayload };
 
 // ============================================================================
-// Environment Configuration
+// Environment Type (minimal subset needed by this module)
 // ============================================================================
 
-declare const INWORLD_API_KEY: string | undefined;
-declare const INWORLD_TTS_VOICE: string | undefined;
-
-/**
- * Get INWORLD_API_KEY from environment, safely handling Cloudflare Workers globals.
- */
-function getInworldApiKey(): string | undefined {
-    // @ts-ignore - INWORLD_API_KEY is injected by Cloudflare Workers
-    const key = typeof INWORLD_API_KEY !== 'undefined' ? INWORLD_API_KEY : undefined;
-    return typeof key === 'string' ? key.trim() : undefined;
-}
-
-/**
- * Get INWORLD_TTS_VOICE from environment, safely handling Cloudflare Workers globals.
- */
-function getInworldTtsVoice(): string | undefined {
-    // @ts-ignore - INWORLD_TTS_VOICE is injected by Cloudflare Workers
-    const voice = typeof INWORLD_TTS_VOICE !== 'undefined' ? INWORLD_TTS_VOICE : undefined;
-    return typeof voice === 'string' ? voice.trim() : undefined;
-}
-
-/**
- * TTS payload returned from successful synthesis.
- */
-export interface TtsPayload {
-    audioBase64: string;
-    mimeType: string;
+export interface InworldTtsEnv {
+    INWORLD_API_KEY: string;
+    INWORLD_TTS_VOICE?: string;
 }
 
 // ============================================================================
@@ -46,14 +26,18 @@ const TTS_MAX_TEXT_LENGTH = 1000;
 
 /**
  * Timeout for TTS requests in milliseconds.
- * 4 seconds is a reasonable baseline for TTS.
  */
 const TTS_TIMEOUT_MS = 4000;
 
 /**
- * Inworld TTS API endpoint.
+ * Inworld TTS API endpoint (v1 voice synthesis).
  */
-const INWORLD_TTS_URL = 'https://api.inworld.ai/v1/tts';
+const INWORLD_TTS_URL = 'https://api.inworld.ai/tts/v1/voice';
+
+/**
+ * Default Inworld TTS model.
+ */
+const INWORLD_TTS_MODEL = 'inworld-tts-1.5-max';
 
 // ============================================================================
 // TTS Synthesis
@@ -61,24 +45,26 @@ const INWORLD_TTS_URL = 'https://api.inworld.ai/v1/tts';
 
 /**
  * Synthesize speech from text using Inworld TTS API.
- * 
- * @param params - Parameters for speech synthesis
+ *
  * @param params.text - The text to synthesize (max 1000 characters)
  * @param params.voiceId - Optional voice ID/name to use
+ * @param params.env - Worker env bindings containing INWORLD_API_KEY
  * @returns TtsPayload with audioBase64 and mimeType, or null on failure
  */
 export async function synthesizeSpeech({
     text,
     voiceId,
+    env,
 }: {
     text: string;
     voiceId?: string;
+    env: InworldTtsEnv;
 }): Promise<TtsPayload | null> {
-    const apiKey = getInworldApiKey();
+    const apiKey = env.INWORLD_API_KEY?.trim();
 
     // Guardrail: Check if API key is configured
     if (!apiKey) {
-        console.warn('[InworldTTS] API key not configured, skipping TTS');
+        console.warn('[InworldTTS] INWORLD_API_KEY not configured, skipping TTS');
         return null;
     }
 
@@ -96,8 +82,8 @@ export async function synthesizeSpeech({
         return null;
     }
 
-    // Determine voice to use
-    const voice = voiceId || getInworldTtsVoice() || 'default';
+    // Determine voice: explicit arg > env binding > fallback
+    const voice = voiceId || env.INWORLD_TTS_VOICE?.trim() || 'default';
 
     // Set up abort controller for timeout
     const controller = new AbortController();
@@ -107,15 +93,13 @@ export async function synthesizeSpeech({
         const response = await fetch(INWORLD_TTS_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
+                'Authorization': `Basic ${apiKey}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 text,
                 voice,
-                output_format: {
-                    type: 'audio/mp3',
-                },
+                modelId: INWORLD_TTS_MODEL,
             }),
             signal: controller.signal,
         });
@@ -131,44 +115,25 @@ export async function synthesizeSpeech({
         // Get audio as array buffer
         const audioArrayBuffer = await response.arrayBuffer();
 
-        // Convert to base64 using Cloudflare Workers' Buffer
-        // @ts-ignore - Buffer is available in Cloudflare Workers
-        const audioBase64 = globalThis.Buffer
-            ? // @ts-ignore
-              globalThis.Buffer.from(audioArrayBuffer).toString('base64')
-            : // Fallback using Uint8Array and btoa
-              base64FromUint8Array(new Uint8Array(audioArrayBuffer));
+        // Convert to base64 in a Workers-compatible way
+        const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
 
         return {
             audioBase64,
             mimeType: 'audio/mp3',
         };
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        // Check for timeout
         if (error instanceof Error && error.name === 'AbortError') {
             console.warn(`[InworldTTS] Request timed out after ${TTS_TIMEOUT_MS}ms`);
         } else {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             console.warn(`[InworldTTS] Failed to synthesize speech: ${errorMessage}`);
         }
-        
+
         return null;
     } finally {
-        // Clean up timeout
         clearTimeout(timeoutId);
     }
-}
-
-/**
- * Fallback base64 encoding using Uint8Array and btoa.
- */
-function base64FromUint8Array(bytes: Uint8Array): string {
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return globalThis.btoa(binary);
 }
 
 // ============================================================================
@@ -176,17 +141,40 @@ function base64FromUint8Array(bytes: Uint8Array): string {
 // ============================================================================
 
 /**
- * Check if Inworld TTS is configured and available.
- * Useful for debugging or UI feedback.
+ * Convert an ArrayBuffer to a base64 string.
+ * Uses globalThis.Buffer when available (Node-compat), otherwise falls back
+ * to Uint8Array + btoa which works in all Workers runtimes.
  */
-export function isTtsConfigured(): boolean {
-    return typeof getInworldApiKey() === 'string' && getInworldApiKey()!.length > 0;
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+    // Node.js Buffer compat (available when nodejs_compat flag is enabled)
+    const g = globalThis as Record<string, unknown>;
+    if (typeof g.Buffer === 'function') {
+        return (g.Buffer as unknown as { from(b: ArrayBuffer): { toString(e: string): string } })
+            .from(buffer)
+            .toString('base64');
+    }
+
+    // Fallback: manual Uint8Array → binary string → btoa
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+/**
+ * Check if Inworld TTS is configured and available.
+ */
+export function isTtsConfigured(env: InworldTtsEnv): boolean {
+    const key = env.INWORLD_API_KEY?.trim();
+    return typeof key === 'string' && key.length > 0;
 }
 
 /**
  * Get the configured voice ID or null if using default.
  */
-export function getConfiguredVoice(): string | null {
-    const voice = getInworldTtsVoice();
+export function getConfiguredVoice(env: InworldTtsEnv): string | null {
+    const voice = env.INWORLD_TTS_VOICE?.trim();
     return voice && voice.length > 0 ? voice : null;
 }
