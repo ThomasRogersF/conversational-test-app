@@ -68,6 +68,23 @@ export const QuizSchema = z.object({
 export type Quiz = z.infer<typeof QuizSchema>;
 
 // ============================================================================
+// Kickoff Config Schema
+// ============================================================================
+
+export const KickoffConfigSchema = z.object({
+    /** Whether kickoff (AI speaks first) is enabled for this scenario */
+    enabled: z.boolean(),
+    /** Maximum number of kickoff turns (default 1) */
+    max_turns: z.number().int().positive().default(1),
+    /** Optional style hint for the kickoff (e.g., "in_scene_question") */
+    style: z.string().optional(),
+    /** The kickoff instruction prompt sent to the AI to generate the opening message */
+    prompt: z.string().min(1),
+});
+
+export type KickoffConfig = z.infer<typeof KickoffConfigSchema>;
+
+// ============================================================================
 // Scenario Schema
 // ============================================================================
 
@@ -86,7 +103,7 @@ export const ScenarioSchema = z.object({
     tags: z.array(z.string()).default([]),
     /** Learning goals for this scenario */
     learningGoals: z.array(z.string().min(1)).min(1),
-    /** Initial message the persona says when scenario starts */
+    /** Initial message the persona says when scenario starts (fallback when kickoff is disabled) */
     initialMessage: z.string().min(1),
     /** Conditions that determine scenario success (data-only text) */
     successConditions: z.array(z.string().min(1)).min(1),
@@ -94,6 +111,8 @@ export const ScenarioSchema = z.object({
     conversationRules: z.array(z.string().min(1)).min(1),
     /** Optional reference to a quiz to take after completing the scenario */
     postQuizId: z.string().optional(),
+    /** Optional kickoff configuration for AI-first lesson start */
+    kickoff: KickoffConfigSchema.optional(),
 });
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
