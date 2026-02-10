@@ -45,8 +45,9 @@ export class SessionRouter {
 
     /**
      * Handle POST /api/session/start
+     * Accepts env to pass through to session engine for kickoff generation.
      */
-    async startSession(request: Request): Promise<Response> {
+    async startSession(request: Request, env?: { OPENAI_API_KEY: string }): Promise<Response> {
         try {
             const body = await request.json() as StartSessionRequest;
 
@@ -61,8 +62,8 @@ export class SessionRouter {
                 );
             }
 
-            // Create session
-            const session = await this.engine.createSession(body.levelId, body.scenarioId);
+            // Create session (env enables kickoff message generation if scenario supports it)
+            const session = await this.engine.createSession(body.levelId, body.scenarioId, env);
 
             return new Response(
                 JSON.stringify(successResponse({

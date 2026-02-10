@@ -16,6 +16,7 @@ import {
     normalizeForExactMatch,
     isExactMatch,
     generateToolNarration,
+    generateKickoffMessage,
 } from './openai';
 import { executeTool, applyToolResultToSession } from './tools';
 
@@ -56,8 +57,11 @@ export class SessionEngine {
 
     /**
      * Create a new session for a given scenario.
+     * If the scenario has kickoff enabled and env is provided,
+     * generates a dynamic AI-first opening message via OpenAI.
+     * Falls back to the static initialMessage on failure or when kickoff is disabled.
      */
-    async createSession(levelId: string, scenarioId: string): Promise<SessionState> {
+    async createSession(levelId: string, scenarioId: string, env?: { OPENAI_API_KEY: string }): Promise<SessionState> {
         // Validate scenario exists
         const scenario = getScenarioById(scenarioId);
         if (!scenario) {
@@ -72,6 +76,38 @@ export class SessionEngine {
         // Get persona for initial message
         const persona = getPersonaById(scenario.personaId);
 
+        // Determine the opening message: kickoff (dynamic) or static initialMessage
+        let openingText = scenario.initialMessage;
+
+        if (scenario.kickoff?.enabled && env) {
+            try {
+                console.log(`[SessionEngine] Generating kickoff message for scenario ${scenarioId}`);
+                openingText = await generateKickoffMessage({
+                    env,
+                    kickoffPrompt: scenario.kickoff.prompt,
+                    scenario: {
+                        id: scenario.id,
+                        title: scenario.title,
+                        learningGoals: scenario.learningGoals,
+                        conversationRules: scenario.conversationRules,
+                        tags: scenario.tags,
+                    },
+                    persona: {
+                        id: persona!.id,
+                        name: persona!.name,
+                        role: persona!.role,
+                        instructions: persona!.instructions,
+                    },
+                });
+                console.log(`[SessionEngine] Kickoff message generated for scenario ${scenarioId}`);
+            } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                console.error(`[SessionEngine] Kickoff generation failed, using static initialMessage: ${errMsg}`);
+                // Fall back to static initialMessage
+                openingText = scenario.initialMessage;
+            }
+        }
+
         // Create the session
         const now = new Date().toISOString();
         const sessionId = generateUUID();
@@ -79,7 +115,7 @@ export class SessionEngine {
         const initialMessage: TranscriptMessage = {
             id: generateUUID(),
             role: 'tutor',
-            text: scenario.initialMessage,
+            text: openingText,
             ts: now,
         };
 
@@ -101,7 +137,7 @@ export class SessionEngine {
         // Store the session
         await this.storage.create(session);
 
-        console.log(`[SessionEngine] Created session ${sessionId} for scenario ${scenarioId}`);
+        console.log(`[SessionEngine] Created session ${sessionId} for scenario ${scenarioId}${scenario.kickoff?.enabled ? ' (kickoff sent)' : ''}`);
 
         return session;
     }
