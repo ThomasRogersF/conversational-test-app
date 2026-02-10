@@ -56,13 +56,6 @@ export class SessionEngine {
 
     /**
      * Create a new session for a given scenario.
-     *
-     * Kickoff (AI-speaks-first) is deterministic and zero-latency:
-     * - The static initialMessage from the scenario JSON is used as the
-     *   opening tutor message (no REST model call).
-     * - When scenario.kickoff?.enabled is true the kickoff prompt and
-     *   conversation rules guide subsequent AI turns via session instructions.
-     * - Kickoff fires exactly once per session (at creation time).
      */
     async createSession(levelId: string, scenarioId: string): Promise<SessionState> {
         // Validate scenario exists
@@ -76,13 +69,13 @@ export class SessionEngine {
             throw new Error(`Scenario "${scenarioId}" does not belong to level "${levelId}"`);
         }
 
+        // Get persona for initial message
+        const persona = getPersonaById(scenario.personaId);
+
         // Create the session
         const now = new Date().toISOString();
         const sessionId = generateUUID();
 
-        // Deterministic kickoff: use the static initialMessage from scenario JSON.
-        // No REST model call — the kickoff prompt and conversation rules drive
-        // subsequent AI behaviour through the session instructions.
         const initialMessage: TranscriptMessage = {
             id: generateUUID(),
             role: 'tutor',
@@ -108,8 +101,7 @@ export class SessionEngine {
         // Store the session
         await this.storage.create(session);
 
-        const kickoff = scenario.kickoff?.enabled ? ' (kickoff sent)' : '';
-        console.log(`[SessionEngine] Created session ${sessionId} for scenario ${scenarioId}${kickoff}`);
+        console.log(`[SessionEngine] Created session ${sessionId} for scenario ${scenarioId}`);
 
         return session;
     }

@@ -18,19 +18,10 @@
             "Learner responds to driver's greeting"
         ],
         "conversationRules": [
-            "Start the lesson immediately in-scene as Jorge the taxi driver — do NOT wait for the learner to speak first",
-            "Use 1–2 short A1 Spanish sentences per turn, end each turn with exactly ONE question",
-            "Correct mistakes implicitly by modeling the right form in your reply, not by lecturing",
-            "Keep turns short; if the learner hesitates, offer a micro-choice (e.g., '¿Al centro o al aeropuerto?')",
+            "Driver waits for learner to initiate the ride request",
             "Driver confirms address after learner provides it",
             "Driver mentions the fare when asked"
         ],
-        "kickoff": {
-            "enabled": true,
-            "max_turns": 1,
-            "style": "in_scene_question",
-            "prompt": "Start immediately as Jorge in the taxi. Use 1–2 short A1 Spanish sentences. Ask ONE question about the destination (where we are going) and nothing else."
-        },
         "postQuizId": "taxi-quiz"
     },
     {

@@ -61,7 +61,7 @@ export class SessionRouter {
                 );
             }
 
-            // Create session (kickoff uses deterministic initialMessage — no REST model call)
+            // Create session
             const session = await this.engine.createSession(body.levelId, body.scenarioId);
 
             return new Response(
