@@ -311,7 +311,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
 
     // Session Routes
     if (pathname === '/api/session/start' && method === 'POST') {
-        return getSessionRouter().startSession(request, env);
+        return getSessionRouter().startSession(request);
     }
 
     if (pathname === '/api/session/turn' && method === 'POST') {
